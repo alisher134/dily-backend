@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { EnumUserRole, User } from '@prisma/client';
 import { verify } from 'argon2';
 import { UserService } from 'src/user/user.service';
+import { IAuthResponse, ITokens } from './auth.interface';
 import { AuthDto } from './dto/auth.dto';
 
 @Injectable()
@@ -19,13 +20,13 @@ export class AuthService {
 		private readonly jwtService: JwtService
 	) {}
 
-	async login(dto: AuthDto) {
+	async login(dto: AuthDto): Promise<IAuthResponse> {
 		const user = await this.validateUser(dto);
 
 		return this.generateResponse(user);
 	}
 
-	async register(dto: AuthDto) {
+	async register(dto: AuthDto): Promise<IAuthResponse> {
 		await this.checkExists(dto.email, dto.username);
 
 		const user = await this.userService.create(dto);
@@ -33,7 +34,7 @@ export class AuthService {
 		return this.generateResponse(user);
 	}
 
-	async getNewTokens(refreshToken: string) {
+	async getNewTokens(refreshToken: string): Promise<IAuthResponse> {
 		if (!refreshToken)
 			throw new UnauthorizedException(
 				'К сожалению, мы не обнаружили ваш refresh токен. Пожалуйста, войдите в систему для получения нового токена'
@@ -52,11 +53,9 @@ export class AuthService {
 
 		const isExistsUsername = await this.userService.getByUsername(username);
 		if (isExistsUsername) throw new BadRequestException('Username занят');
-
-		return false;
 	}
 
-	private async validateUser(dto: AuthDto) {
+	private async validateUser(dto: AuthDto): Promise<User> {
 		const user = await this.userService.getByEmail(dto.email);
 		if (!user) throw new BadRequestException('Неверный email или password');
 
@@ -67,7 +66,10 @@ export class AuthService {
 		return user;
 	}
 
-	private async generateToken(userId: string, role: EnumUserRole) {
+	private async generateToken(
+		userId: string,
+		role: EnumUserRole
+	): Promise<ITokens> {
 		const payload = { id: userId, role };
 
 		const accessToken = await this.jwtService.signAsync(payload, {
@@ -81,13 +83,13 @@ export class AuthService {
 		return { accessToken, refreshToken };
 	}
 
-	private omitPassword(user: User) {
+	private omitPassword(user: User): Omit<User, 'password'> {
 		const { password, ...rest } = user;
 
 		return rest;
 	}
 
-	private async generateResponse(user: User) {
+	private async generateResponse(user: User): Promise<IAuthResponse> {
 		const tokens = await this.generateToken(user.id, user.role);
 
 		return {
